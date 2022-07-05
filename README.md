@@ -26,6 +26,8 @@ $ go get -u github.com/go-echarts/statsview/...
 Statsview is quite simple to use and all static assets have been packaged into the project which makes it possible to run offline. It's worth pointing out that statsview has integrated the standard `net/http/pprof` hence statsview will be the only profiler you need.
 
 ```golang
+package main
+
 import (
     "time"
 
@@ -33,18 +35,16 @@ import (
 )
 
 func main() {
-    go func() {
-        mgr := statsview.New()
+	mgr := statsview.New()
 
-        // Start() runs a HTTP server at `localhost:18066` by default.
-        mgr.Start()
+	// Start() runs a HTTP server at `localhost:18066` by default.
+	go mgr.Start()
 
-        // Stop() will shutdown the http server gracefully
-        // mgr.Stop()
-    }()
+	// Stop() will shutdown the http server gracefully
+	// mgr.Stop()
 
-    // busy working....
-    time.Sleep(time.Minute)
+	// busy working....
+	time.Sleep(time.Minute)
 }
 
 // Visit your browser at http://localhost:18066/debug/statsview
@@ -68,9 +68,13 @@ WithMaxPoints(n int)
 // handling the metrics data
 WithTemplate(t string)
 
-// WithAddr sets the listen address
+// WithAddr sets the listening address and link address
 // default -> "localhost:18066"
 WithAddr(addr string)
+
+// WithLinkAddr sets the html link address
+// default -> "localhost:18066"
+WithLinkAddr(addr string)
 
 // WithTimeFormat sets the time format for the line-chart Y-axis label
 // default -> "15:04:05"
@@ -89,11 +93,15 @@ WithTheme(theme Theme)
 
 ```golang
 import (
+    "github.com/go-echarts/statsview"
     "github.com/go-echarts/statsview/viewer"
 )
 
-// set configurations before calling the `Start()` method
+// set configurations before calling `statsview.New()` method
 viewer.SetConfiguration(viewer.WithTheme(viewer.ThemeWesteros), viewer.WithAddr("localhost:8087"))
+
+mgr := statsview.New()
+go mgr.Start()
 ```
 
 ## 🗂 Viewers

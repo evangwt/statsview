@@ -17,44 +17,31 @@ import (
 
 // ViewManager
 type ViewManager struct {
-	Views []viewer.Viewer
+	srv *http.Server
 
-	srv  *http.Server
-	done chan struct{}
+	Smgr   *viewer.StatsMgr
+	Ctx    context.Context
+	Cancel context.CancelFunc
+	Views  []viewer.Viewer
 }
 
-// Register registers views to the ViweManager
+// Register registers views to the ViewManager
 func (vm *ViewManager) Register(views ...viewer.Viewer) {
 	vm.Views = append(vm.Views, views...)
+
 }
 
 // Start runs a http server and begin to collect metrics
-func (vm *ViewManager) Start() {
-	ticker := time.NewTicker(time.Duration(viewer.Interval()) * time.Millisecond)
-
-	go func() {
-		vm.srv.ListenAndServe()
-	}()
-
-	for {
-		select {
-		case <-ticker.C:
-			viewer.StartRTCollect()
-		case <-vm.done:
-			vm.Stop()
-			ticker.Stop()
-			return
-		}
-	}
+func (vm *ViewManager) Start() error {
+	return vm.srv.ListenAndServe()
 }
 
 // Stop shutdown the http server gracefully
 func (vm *ViewManager) Stop() {
-	vm.done <- struct{}{}
-
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	vm.srv.Shutdown(ctx)
+	vm.Cancel()
 }
 
 func init() {
@@ -77,11 +64,10 @@ func init() {
 func New() *ViewManager {
 	page := components.NewPage()
 	page.PageTitle = "Statsview"
-	page.AssetsHost = fmt.Sprintf("http://%s/debug/statsview/statics/", viewer.Addr())
+	page.AssetsHost = fmt.Sprintf("http://%s/debug/statsview/statics/", viewer.LinkAddr())
 	page.Assets.JSAssets.Add("jquery.min.js")
 
 	mgr := &ViewManager{
-		done: make(chan struct{}),
 		srv: &http.Server{
 			Addr:           viewer.Addr(),
 			ReadTimeout:    time.Minute,
@@ -89,7 +75,7 @@ func New() *ViewManager {
 			MaxHeaderBytes: 1 << 20,
 		},
 	}
-
+	mgr.Ctx, mgr.Cancel = context.WithCancel(context.Background())
 	mgr.Register(
 		viewer.NewGoroutinesViewer(),
 		viewer.NewHeapViewer(),
@@ -98,6 +84,10 @@ func New() *ViewManager {
 		viewer.NewGCSizeViewer(),
 		viewer.NewGCCPUFractionViewer(),
 	)
+	smgr := viewer.NewStatsMgr(mgr.Ctx)
+	for _, v := range mgr.Views {
+		v.SetStatsMgr(smgr)
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
@@ -132,6 +122,6 @@ func New() *ViewManager {
 		w.Write([]byte(statics.MacaronsJS))
 	})
 
-	mgr.srv.Handler = cors.Default().Handler(mux)
+	mgr.srv.Handler = cors.AllowAll().Handler(mux)
 	return mgr
 }
